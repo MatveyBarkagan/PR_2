@@ -12,56 +12,73 @@ static volatile int running = 1;
 
 void handle_signal(int sig) {
     if (sig == SIGTERM || sig == SIGINT) {
-        running = 0; // Устанавливаем флаг для завершения работы демона
+        running = 0;
     }
 }
 
 void daemonize() {
     pid_t pid;
 
-    pid = fork(); // Создаем дочерний процесс
-
+    pid = fork();
     if (pid < 0) {
-        exit(EXIT_FAILURE); // Ошибка при создании дочернего процесса
+        perror("Fork failed");
+        exit(EXIT_FAILURE);
     }
-
     if (pid > 0) {
-        exit(EXIT_SUCCESS); // Родительский процесс завершает работу
+        exit(EXIT_SUCCESS);
     }
 
     if (setsid() < 0) {
-        exit(EXIT_FAILURE); // Дочерний процесс становится сессионным лидером
+        perror("Failed to become session leader");
+        exit(EXIT_FAILURE);
     }
 
-    signal(SIGCHLD, SIG_IGN);
-    signal(SIGHUP, SIG_IGN);
-
-    pid = fork(); // Создаем второй дочерний процесс
-
+    struct sigaction sa;
+    sa.sa_handler = SIG_IGN;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGHUP, &sa, NULL) < 0) {
+        perror("Failed to ignore SIGHUP");
+        exit(EXIT_FAILURE);
+    }
+    
+    pid = fork();
     if (pid < 0) {
-        exit(EXIT_FAILURE); // Ошибка при создании дочернего процесса
+        perror("Fork failed");
+        exit(EXIT_FAILURE);
     }
-
     if (pid > 0) {
-        exit(EXIT_SUCCESS); // Родительский процесс завершает работу
+        exit(EXIT_SUCCESS);
     }
 
-    umask(0); // Устанавливаем права доступа к файлам
-    chdir("/"); // Меняем текущую директорию на корневую
+    umask(0);
+    if (chdir("/") < 0) {
+        perror("Failed to change directory");
+        exit(EXIT_FAILURE);
+    }
 
     for (int x = sysconf(_SC_OPEN_MAX); x >= 0; x--) {
-        close(x); // Закрываем все открытые файловые дескрипторы
+        close(x);
     }
 }
 
-void read_config(char* path, char* format) {
+void read_config(char** path, char** format) {
     FILE *file = fopen(CONFIG_FILE, "r");
     if (file == NULL) {
         perror("Failed to open config file");
         exit(EXIT_FAILURE);
     }
 
-    fscanf(file, "path=%255s\nformat=%15s", path, format);
+    size_t path_len = 256, format_len = 16;
+    *path = malloc(path_len);
+    *format = malloc(format_len);
+    
+    if (fscanf(file, "path=%255s\nformat=%15s", *path, *format) != 2) {
+        perror("Failed to read config file");
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+    
     fclose(file);
 }
 
@@ -70,24 +87,35 @@ void write_log(const char* path, const char* message) {
     if (file != NULL) {
         fprintf(file, "%s\n", message);
         fclose(file);
+    } else {
+        perror("Failed to open log file");
     }
 }
 
 int main() {
-    daemonize(); // Демонизируем процесс
+    daemonize();
 
-    signal(SIGTERM, handle_signal); // Устанавливаем обработчики сигналов
-    signal(SIGINT, handle_signal);
-
-    char path[256], format[16];
-    read_config(path, format); // Читаем конфигурацию
-
-    while (running) {
-        write_log(path, "Daemon running..."); // Записываем сообщение в журнал
-        sleep(10); // Пауза на 10 секунд
+    struct sigaction sa;
+    sa.sa_handler = handle_signal;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGTERM, &sa, NULL) < 0 || sigaction(SIGINT, &sa, NULL) < 0) {
+        perror("Failed to set signal handlers");
+        exit(EXIT_FAILURE);
     }
 
-    write_log(path, "Daemon stopping..."); // Записываем сообщение о завершении работы
+    char *path = NULL, *format = NULL;
+    read_config(&path, &format);
+
+    while (running) {
+        write_log(path, "Daemon running...");
+        sleep(10);
+    }
+
+    write_log(path, "Daemon stopping...");
+
+    free(path);
+    free(format);
 
     return 0;
 }
