@@ -1,16 +1,17 @@
-#include "mylib.h" 
+#include "mylib.h"
 #include <stdio.h>
-int main() {
-    const char* message = "Hello, world!"; // Создаем сообщение для записи в журнал
 
-    // Вызываем функцию mysyslog из нашей библиотеки для записи сообщения в журнал
-    int result = mysyslog(message, INFO, FORMAT_PLAIN, "logfile.txt");
-    // Проверяем результат вызова функции
+int main() {
+    const char* message = "Hello, world!";
+    const char* logFilePath = "logfile.txt";
+
+    int result = mysyslog(message, INFO, FORMAT_PLAIN, logFilePath);
+
     if (result == 0) {
-        printf("Message '%s' logged successfully!\n", message); // Если успешно, выводим сообщение об успешной записи
+        printf("Message '%s' logged successfully to '%s'!\n", message, logFilePath);
     } else {
-        printf("Error logging message '%s'\n", message); // Если произошла ошибка, выводим сообщение об ошибке
+        fprintf(stderr, "Error logging message '%s' to '%s'\n", message, logFilePath);
     }
 
-    return 0;
+    return result;
 }
