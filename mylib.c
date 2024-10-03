@@ -16,35 +16,43 @@ const char* level_to_string(int level) {
 
 // Форматирование сообщения в зависимости от указанного формата
 void format_message(const char* msg, int level, int format, char* buffer, size_t buffer_size) {
-    if (format == FORMAT_PLAIN) {
-        snprintf(buffer, buffer_size, "[%s] %s", level_to_string(level), msg);
-    } else if (format == FORMAT_JSON) {
-        snprintf(buffer, buffer_size, "{\"level\": \"%s\", \"message\": \"%s\"}", level_to_string(level), msg);
-    } else {
-        snprintf(buffer, buffer_size, "%s", msg);
+    switch (format) {
+        case FORMAT_PLAIN:
+            snprintf(buffer, buffer_size, "[%s] %s", level_to_string(level), msg);
+            break;
+        case FORMAT_JSON:
+            snprintf(buffer, buffer_size, "{\"level\": \"%s\", \"message\": \"%s\"}", level_to_string(level), msg);
+            break;
+        default:
+            snprintf(buffer, buffer_size, "%s", msg);
+            break;
     }
 }
 
 // Основная функция журналирования
 int mysyslog(const char* msg, int level, int format, const char* path) {
+    if (!msg || !path) {
+        return -1; // Неверные аргументы
+    }
+
     // Открытие файла для добавления записей
     FILE* logfile = fopen(path, "a");
     if (!logfile) {
-        return -1; // Ошибка открытия файла
+        perror("Ошибка открытия файла журналирования");
+        return -1;
     }
 
     // Буфер для форматированного сообщения
     char formatted_msg[1024];
-    // Форматирование сообщения
     format_message(msg, level, format, formatted_msg, sizeof(formatted_msg));
-    
+
     // Запись форматированного сообщения в файл
     if (fprintf(logfile, "%s\n", formatted_msg) < 0) {
+        perror("Ошибка записи в файл журналирования");
         fclose(logfile);
-        return -1; // Ошибка записи в файл
+        return -1;
     }
 
-    // Закрытие файла
     fclose(logfile);
-    return 0; // Успешное выполнение
+    return 0;
 }
